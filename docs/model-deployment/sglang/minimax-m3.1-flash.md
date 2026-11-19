@@ -14,20 +14,25 @@ MiniMax-M3.1-Flash 采用 MoE 和 MiniMax Sparse Attention（MSA）。本配方�
 
 - 两台 Linux 节点，各有 8 张 BW1100 96 GB 卡（`gfx938`）。在容器内确认 8 张卡、`/dev/kfd`、`/dev/dri`、RDMA 设备及网卡可见，P/D 节点之间可互访 worker HTTP 端口和 Prefill bootstrap 端口。
 - 两端使用 Python 3.12、DTK 26.10 和同一套 HCU Torch 运行时，准备兼容的 AITER、DeepEP、ROCSHMEM、Mooncake、FlashMLA（gfx938 MSA128）和 LightOp（W4A8 HIPC、INT8 量化）。使用现成的匹配环境和 wheel。
-- 复跑时固定 [SGLang 0.5.23 宿主提交](https://github.com/sgl-project/sglang/tree/297e54fd105e974cdf401e5b4d20253a22c16f90)、[HCU Plugin 的 HiSparse/DSpark 修复](https://github.com/chenyuege/sglang-plugin-das/commit/838ad34bfcb503a7f10f8cb60ab375505b079303)和[配套 adapter 版本](https://github.com/chenyuege/adapter-das/commit/20d18cc)。插件修复提交与 96 GB 验证用插件的 Git 树一致，包含 [HiSparse PR #70](https://github.com/HYGON-AI/sglang-plugin-das/pull/70)。
+
+运行环境使用以下上游源码。SGLang 使用发布标签，Plugin 和 adapter 固定到对应分支的提交，便于两端使用同一套代码。
+
+- SGLang `v0.5.23`，标签指向提交 `297e54fd10`。[社区源码](https://github.com/sgl-project/sglang/tree/v0.5.23)
+- HCU Plugin `proj/minimax-m3.1`，部署固定 `0d777624d9cbafcb842c03cc76373fb495a282b8`。该提交包含 HiSparse 及 DSpark draft TP 作用域修复。[分支源码](https://github.com/HYGON-AI/sglang-plugin-das/tree/proj/minimax-m3.1) · [HiSparse PR #70](https://github.com/HYGON-AI/sglang-plugin-das/pull/70) · [DSpark PR #71](https://github.com/HYGON-AI/sglang-plugin-das/pull/71)
+- adapter-das `main`，部署固定 `ef63bbbd73a42812db9de1683e6720239c42fd68`。[分支源码](https://github.com/HYGON-AI/adapter-das/tree/main)
 
 直接在现有 HCU 容器内启动时，在两端各执行一次。已有兼容的 SGLang 依赖时可用 `--no-deps` 安装宿主代码和插件，保留镜像中的 Torch 与原生扩展。使用本仓库 Dockerfile 时，这些安装步骤已包含在构建过程中。
 
 ```bash
 mkdir -p runtime/src
-git clone https://github.com/sgl-project/sglang.git runtime/src/sglang
-git -C runtime/src/sglang checkout --detach 297e54fd105e974cdf401e5b4d20253a22c16f90
-git clone https://github.com/chenyuege/adapter-das.git runtime/src/adapter-das
-git -C runtime/src/adapter-das fetch origin 20d18cc6c550e32b119fe69a95db2c6ed83d7887
-git -C runtime/src/adapter-das checkout --detach FETCH_HEAD
-git clone --branch fix/minimax-m31-hisparse-dspark-tp-scope \
-  https://github.com/chenyuege/sglang-plugin-das.git runtime/src/sglang-plugin-das
-git -C runtime/src/sglang-plugin-das checkout --detach 838ad34bfcb503a7f10f8cb60ab375505b079303
+git clone --depth 1 --branch v0.5.23 \
+  https://github.com/sgl-project/sglang.git runtime/src/sglang
+git clone --filter=blob:none --branch main \
+  https://github.com/HYGON-AI/adapter-das.git runtime/src/adapter-das
+git -C runtime/src/adapter-das checkout --detach ef63bbbd73a42812db9de1683e6720239c42fd68
+git clone --filter=blob:none --branch proj/minimax-m3.1 \
+  https://github.com/HYGON-AI/sglang-plugin-das.git runtime/src/sglang-plugin-das
+git -C runtime/src/sglang-plugin-das checkout --detach 0d777624d9cbafcb842c03cc76373fb495a282b8
 
 SETUPTOOLS_SCM_PRETEND_VERSION_FOR_SGLANG=0.5.23 \
   python3 -m pip install --no-deps --no-build-isolation -e runtime/src/sglang/python
@@ -58,6 +63,8 @@ docker build \
 ```
 
 将同一镜像分发到两台 worker，Router 节点也使用该镜像。Compose 使用宿主网络和 IPC，挂载模型（只读）、可选调优资产（只读）与 trace 输出目录。若基础镜像要求额外映射宿主的驱动或 HyHAL 目录，按该镜像的运行说明增加 Compose volume。
+
+构建时可通过 `PLUGIN_SHA` 和 `ADAPTER_SHA` 指定相应上游仓库中的其他提交。使用新提交时，先验证短请求和长上下文，再更新两端镜像。
 
 ```bash
 docker compose run --rm --no-deps --entrypoint python3 worker -c \
@@ -158,7 +165,7 @@ curl -fsS "$ROUTER_URL/v1/chat/completions" \
   }'
 ```
 
-检查两端的 `disaggregation_mode`、Mooncake 后端、Decode 的 HiSparse 开关与请求上限，再检查 Router 返回的 `choices[0].message.content`。如果短请求停在首轮 DSpark verify，先核对 Decode 插件是否包含上面固定的 draft 通信组修复。
+检查两端的 `disaggregation_mode`、Mooncake 后端、Decode 的 HiSparse 开关与请求上限，再检查 Router 返回的 `choices[0].message.content`。如果短请求停在首轮 DSpark verify，先核对 Decode 插件是否包含 PR #71 的 draft 通信组修复。
 
 ## 性能测试
 
@@ -204,6 +211,6 @@ Prefill 在共享前缀预热后发起采样，将目标改为 P worker，阶段
 
 分别核对 8 个 rank 的 Python 栈、CPU 算子、HIP API 和 GPU kernel。full graph 额外核对 `hipGraphLaunch` 或等价 replay 事件。把 trace 导出与请求完成率分开记录，采样阶段的延迟单独标记。
 
-96 GB 实卡记录覆盖真实 Mooncake 短请求，以及 8、16、24 客户端并发的长上下文验证。历史插件 trace 与性能采样使用过不同提交和运行环境，比较时应记录各自的宿主、插件、adapter、Torch/DTK 和 kernel wheel 版本。
+历史 96 GB 实卡记录覆盖真实 Mooncake 短请求，以及 8、16、24 客户端并发的长上下文验证。该记录使用 SGLang `297e54fd10`、[Plugin 验证树](https://github.com/chenyuege/sglang-plugin-das/commit/838ad34bfcb503a7f10f8cb60ab375505b079303)和 [adapter `20d18cc`](https://github.com/chenyuege/adapter-das/commit/20d18cc)。当前上游组合需重新跑实卡验证。比较 trace 和性能时，记录各轮的宿主、插件、adapter、Torch/DTK 和 kernel wheel 版本。
 
 文档结构参考 [add-model](https://github.com/HYGON-AI/inference-cookbook-das/tree/main/.claude/skills/add-model)与 [MiniMax-M3 on SGLang](https://github.com/HYGON-AI/inference-cookbook-das/blob/main/docs/model-deployment/sglang/minimax-m3.md)。插件启动参数参考撤回前的 [MiniMax Plugin 脚本归档](https://github.com/chenyuege/sglang-plugin-das/tree/e4a57e6/tools/minimax_m31)。
