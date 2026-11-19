@@ -1,0 +1,51 @@
+services:
+  worker:
+    profiles: [worker]
+    image: ${M31_IMAGE:-minimax-m31-hcu:0.5.23}
+    network_mode: host
+    ipc: host
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+      - /dev/infiniband:/dev/infiniband
+    ulimits:
+      memlock: -1
+    volumes:
+      - ${M31_MODEL_ROOT:-/model}:/model:ro
+      - ${M31_ASSET_ROOT:-./runtime/assets}:/assets:ro
+      - ${M31_TRACE_ROOT:-./runtime/traces}:/traces
+    environment:
+      M31_MODEL_PATH: ${M31_MODEL_PATH:-/model/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8}
+      M31_DSPARK_MODEL_PATH: ${M31_DSPARK_MODEL_PATH:-}
+      M31_PD_IB_DEVICES: ${M31_PD_IB_DEVICES:-}
+      ROCSHMEM_ALLOWED_IBV_DEVICES: ${ROCSHMEM_ALLOWED_IBV_DEVICES:-}
+      M31_PORT: ${M31_PORT:-30000}
+      M31_BOOTSTRAP_PORT: ${M31_BOOTSTRAP_PORT:-8998}
+      M31_DECODE_GRAPH: ${M31_DECODE_GRAPH:-full}
+      M31_SKIP_STARTUP_WARMUP: ${M31_SKIP_STARTUP_WARMUP:-0}
+      M31_DEEPEP_CONFIG: ${M31_DEEPEP_CONFIG:-}
+      M31_EPLB_LAYOUT: ${M31_EPLB_LAYOUT:-}
+      M31_PREFILL_MAX_TOTAL_TOKENS: ${M31_PREFILL_MAX_TOTAL_TOKENS:-}
+      HIPBLASLT_TUNING_OVERRIDE_FILE:
+      ROCBLAS_TENSILE_LIBPATH:
+    entrypoint: [bash, /opt/minimax-m31/serve.sh]
+    command: ["${M31_ROLE:-prefill}"]
+
+  router:
+    profiles: [router]
+    image: ${M31_IMAGE:-minimax-m31-hcu:0.5.23}
+    network_mode: host
+    entrypoint: [python3, -m, sglang_router.launch_router]
+    command:
+      - --pd-disaggregation
+      - --prefill
+      - ${M31_PREFILL_URL:-http://192.0.2.10:30000}
+      - "${M31_BOOTSTRAP_PORT:-8998}"
+      - --decode
+      - ${M31_DECODE_URL:-http://192.0.2.11:30000}
+      - --policy
+      - round_robin
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${M31_ROUTER_PORT:-30001}"
