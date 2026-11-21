@@ -8,7 +8,7 @@
 
 两节点使用一致的 HCU/DTK、Torch、FlashMLA、LightOp 和 DeepEP 运行时。社区 SGLang 版本为 0.5.23。Plugin 需要上游 `proj/minimax-m3.1` 含 CP8EP8 packed FP8 KV 支持的版本。Adapter 需包含下面的广播压缩提交。全部 rank 更新后再开启压缩。
 
-[Plugin 评审提交](https://github.com/chenyuege/sglang-plugin-das/commit/722130d00542cafdd51a7eb13cc0a67c7e4df32e) · [Adapter 广播压缩提交](https://github.com/chenyuege/adapter-das/commit/ba3f5b5f3881dd5033388bf5c2c22c21010600ad)
+[Plugin 评审提交](https://github.com/chenyuege/sglang-plugin-das/commit/722130d00542cafdd51a7eb13cc0a67c7e4df32e) · [Adapter 广播压缩提交](https://github.com/chenyuege/adapter-das/commit/00efd158865dbb496134a907b519b9e489fe012b)
 
 将匹配权重版本的静态 EPLB 映射、DeepEP SMS 配置、hipBLASLt 调优文件、ROCm Tensile 库目录和模型挂载提供给两节点。布局默认文件名为 `m31-cp8ep8-from-dp16-logical-count.pt`，形状 60 × 136。用目标 checkpoint 对应的统计生成映射。
 
