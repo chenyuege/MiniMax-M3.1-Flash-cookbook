@@ -22,6 +22,7 @@ if (( ! print_args )) && [[ -r /opt/dtk/env.sh ]]; then
     set -u
 fi
 
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 runtime=${M31_RUNTIME_DIR:-/opt/minimax-cp8ep8}
 py=${M31_PYTHON:-python3}
 site_dir=${M31_SITE_DIR:-$runtime/site}
@@ -29,23 +30,23 @@ adapter_dir=${M31_ADAPTER_DIR:-$runtime/adapter}
 assets=${M31_ASSETS_DIR:-$runtime/config}
 model=${M31_MODEL_PATH:-/model/main-w4a8}
 layout=${M31_EPLB_INIT_LOCATION:-$runtime/layout/m31-cp8ep8-from-dp16-logical-count.pt}
-deepep_config=${M31_DEEPEP_CONFIG:-$assets/deepep-sms64-only.json}
+deepep_config=${M31_DEEPEP_CONFIG:-$script_dir/../configs/cp8ep8-prefill-deepep.json}
 
 export PYTHONPATH="$adapter_dir:$site_dir"
-export HCU_DIST_BROADCAST_COMPRESS="${HCU_DIST_BROADCAST_COMPRESS:-1}"
-export SGLANG_MINIMAX_CP_PACK_PREFILL_SEGMENTS="${SGLANG_MINIMAX_CP_PACK_PREFILL_SEGMENTS:-0}"
+export HCU_DIST_BROADCAST_COMPRESS=1
+export SGLANG_MINIMAX_CP_PACK_PREFILL_SEGMENTS=0
 export PYTHONDONTWRITEBYTECODE=1
 export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-eth0}"
 export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-eth0}"
 export HCU_ADAPTER_HOST=sglang
 export SGLANG_PLUGINS=hcu_minimax_m31
 export HCU_PREFILL_CP=1
-export SGLANG_MINIMAX_PREFILL_SHARED_OVERLAP_METHOD="${SGLANG_MINIMAX_PREFILL_SHARED_OVERLAP_METHOD:-split}"
+export SGLANG_MINIMAX_PREFILL_SHARED_OVERLAP_METHOD=split
 export SGLANG_USE_LIGHTOP_MINIMAX_QK_ROPE=0
 export HCU_PLUGIN_MINIMAX_M31_FLASHMLA=1
 export HCU_PLUGIN_MINIMAX_M31_DEEPEP=1
 export HCU_DEEPEP_BRIDGE=0
-export DEEP_EP_NORMAL_MNVL="${DEEP_EP_NORMAL_MNVL:-1}"
+export DEEP_EP_NORMAL_MNVL=1
 export HCU_AITER_AR=1
 export PYTHONNOUSERSITE=1
 export HIP_VISIBLE_DEVICES=0,1,2,3
@@ -60,8 +61,8 @@ fi
 # FlashMLA and CP.
 export MSA128_FP8_PREFILL_KERNEL=v2
 export SGLANG_MINIMAX_INDEX_FP8=dot
-export SGLANG_MINIMAX_CACHE_PREFILL_INDEX_METADATA="${SGLANG_MINIMAX_CACHE_PREFILL_INDEX_METADATA:-1}"
-export FLASH_MLA_STAGE1_PREFILL_ASYNC_H2D="${FLASH_MLA_STAGE1_PREFILL_ASYNC_H2D:-1}"
+export SGLANG_MINIMAX_CACHE_PREFILL_INDEX_METADATA=1
+export FLASH_MLA_STAGE1_PREFILL_ASYNC_H2D=1
 export SGLANG_KV_LAYOUT_HCU_FA=0
 export HCU_MINIMAX_CP_PACK_FP8=1
 
@@ -76,7 +77,6 @@ export SGLANG_USE_INT4_W4A8=1
 export SGLANG_W4A8_TPMOE_BACKEND=lightop
 export SGLANG_USE_LIGHTOP_W4A8_MARLIN_MOE=0
 export SGLANG_USE_W4A8_CONTIGUOUS_HIPC=1
-export SGLANG_USE_W4A8_MASKED_HIPC=1
 export SGLANG_GROUPGEMM=1
 export W8A8_SUPPORT_METHODS=3
 export SGLANG_USE_DEEPGEMM_MOE=0
@@ -115,12 +115,8 @@ if (( print_args )); then
     exit 0
 fi
 
-if [[ $layout != trivial && ! -r $layout ]]; then
-    echo "Missing or unreadable EPLB layout: $layout" >&2
-    exit 1
-fi
-for file in "$model/config.json" "$deepep_config" "$HIPBLASLT_TUNING_OVERRIDE_FILE"; do
-    [[ -s $file && -r $file ]] || { echo "Missing or unreadable file: $file" >&2; exit 1; }
+for file in "$model/config.json" "$layout" "$deepep_config" "$HIPBLASLT_TUNING_OVERRIDE_FILE"; do
+    [[ -f $file && -s $file && -r $file ]] || { echo "Missing, empty or unreadable file: $file" >&2; exit 1; }
 done
 for dir in "$site_dir" "$adapter_dir" "$ROCBLAS_TENSILE_LIBPATH"; do
     [[ -d $dir && -r $dir ]] || { echo "Missing or unreadable directory: $dir" >&2; exit 1; }
