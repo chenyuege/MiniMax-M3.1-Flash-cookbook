@@ -18,10 +18,15 @@ fi
 runtime=${M31_RUNTIME_DIR:-/opt/minimax31-w4a8-plugin}
 py=${M31_PYTHON:-python3}
 model=${M31_MODEL_PATH:-/model/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8}
-draft=${M31_DSPARK_MODEL_PATH:-"$model/dspark-channel-int8-smooth-20261107"}
+draft=${M31_DSPARK_MODEL_PATH:-${M31_DRAFT_PATH:-"$model/dspark-channel-int8-smooth-20261107"}}
 layout=${M31_EPLB_INIT_LOCATION:-$runtime/layout/expert_distribution_recorder_1794400407.277366.pt}
 export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
-export PYTHONPATH="$runtime/source/adapter-das:$runtime/site"
+if [[ -s $runtime/bootstrap/sitecustomize.py ]]; then
+    export PYTHONPATH="$runtime/bootstrap"
+else
+    export PYTHONPATH="$runtime/source/adapter-das:$runtime/site"
+fi
+export SETUPTOOLS_USE_DISTUTILS=${SETUPTOOLS_USE_DISTUTILS:-stdlib}
 export HCU_ADAPTER_HOST=sglang SGLANG_PLUGINS=hcu_minimax_m31 HCU_SLIMQUANT=0
 export HIP_VISIBLE_DEVICES=${HIP_VISIBLE_DEVICES:-0,1,2,3} HCU_PREFILL_CP=0 GPU_ARCHS=gfx938 GPU_MAX_HW_QUEUES=4
 export HCU_PLUGIN_MINIMAX_M31_FLASHMLA=1 HCU_PLUGIN_MINIMAX_M31_DEEPEP=1 HCU_DEEPEP_BRIDGE=0
@@ -31,7 +36,7 @@ export SGLANG_W4A8_TPMOE_BACKEND=lightop SGLANG_USE_LIGHTOP_W4A8_MARLIN_MOE=0 SG
 export SGLANG_USE_LIGHTOP=1 SGLANG_USE_LIGHTOP_OAI_INT8_QUANT=1 LIGHTOP_PER_TOKEN_INT8_METHOD=triton
 export W8A8_SUPPORT_METHODS=3 SGLANG_USE_LIGHTOP_GEMMA_RMSNORM=1 SGLANG_USE_LIGHTOP_MINIMAX_QK_ROPE=1
 export SGLANG_USE_DEEPGEMM_MOE=0 SGLANG_DEEPEP_USE_MOE_EP_GROUP=1 AITER_AR_TRANSPORT=ipc HCU_AITER_AR=1
-export DEEPEP_ENABLE_LL_LAYERED_OPT=1 SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK=128
+export DEEPEP_ENABLE_LL_LAYERED_OPT=${DEEPEP_ENABLE_LL_LAYERED_OPT:-0} SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK=128
 export DEEP_EP_NORMAL_MNVL=1 ROCSHMEM_IPC_MNVL=1 HIP_BUFFER_EXTRA_SIZE=0
 export ROCSHMEM_GDR_DISABLE_HDP=1 ROCSHMEM_GDR_DISABLE_XDP=1 ROCSHMEM_DISABLE_HDP_FLUSH=1
 if (( ! print_args )) && [[ -z ${ROCSHMEM_ALLOWED_IBV_DEVICES:-} ]]; then
@@ -41,15 +46,47 @@ if (( ! print_args )) && [[ -z ${ROCSHMEM_ALLOWED_IBV_DEVICES:-} ]]; then
 fi
 export ROCSHMEM_ALLOWED_IBV_DEVICES
 export SGLANG_EPLB_AUTO_START_RECORDER=0 SGLANG_MINIMAX_INDEX_FP8=dot SGLANG_MINIMAX_CACHE_PREFILL_INDEX_METADATA=1
-export SGLANG_OPT_USE_MINIMAX_ROUTER_GEMV=1 MSA_STAGE1_KERNEL=v8 FLASH_MLA_MSA128_FP8_SPLIT_POLICY=verify8
+export SGLANG_OPT_USE_BF16_ROUTER_GEMM=1 SGLANG_OPT_USE_MINIMAX_ROUTER_GEMV=1
+export SGLANG_MINIMAX_EXTEND_ROUTER_GEMV=${SGLANG_MINIMAX_EXTEND_ROUTER_GEMV:-1}
+export MSA_STAGE1_KERNEL=v8 FLASH_MLA_MSA128_FP8_SPLIT_POLICY=verify8
+export SGLANG_M3_OPTIMIZE_SPARSE_ATTN_PREP=${SGLANG_M3_OPTIMIZE_SPARSE_ATTN_PREP:-1}
+export SGLANG_HCU_ASYNC_SEQ_LENS_D2H=${SGLANG_HCU_ASYNC_SEQ_LENS_D2H:-1}
+export SGLANG_MINIMAX_M31_DRAFT_SPLITKV=${SGLANG_MINIMAX_M31_DRAFT_SPLITKV:-1}
+export SGLANG_MINIMAX_CACHE_DECODE_INDEX_METADATA=${SGLANG_MINIMAX_CACHE_DECODE_INDEX_METADATA:-1}
+export SGLANG_MINIMAX_DECODE_SHARED_OVERLAP=${SGLANG_MINIMAX_DECODE_SHARED_OVERLAP:-0}
+export SGLANG_MINIMAX_DECODE_SHARED_OVERLAP_DP16=${SGLANG_MINIMAX_DECODE_SHARED_OVERLAP_DP16:-0}
 export SGLANG_MINIMAX_FLASH_MLA_FP8_VERIFY_SPLITS=${SGLANG_MINIMAX_FLASH_MLA_FP8_VERIFY_SPLITS:-8}
 export SGLANG_SIMULATE_ACC_LEN=0 SGLANG_MINIMAX_DSPARK_INT8_KV_ONLY=1 SGLANG_RAGGED_VERIFY_MODE=static
-export SGLANG_DSPARK_FOLDED_PROPOSAL=0 SGLANG_DSPARK_USE_GREEDY_DRAFT=0 M31_STAGE1_GRAPH_MAX_KV_LEN=148608
+export SGLANG_DSPARK_FOLDED_PROPOSAL=0 SGLANG_DSPARK_USE_GREEDY_DRAFT=0
+export M31_STAGE1_GRAPH_MAX_KV_LEN=${M31_STAGE1_GRAPH_MAX_KV_LEN-148608}
+if [[ -n ${M31_TUNABLE_CSV:-} ]]; then
+    [[ $M31_TUNABLE_CSV == *.csv ]] || { echo "M31_TUNABLE_CSV must end in .csv." >&2; exit 2; }
+    if (( ! print_args )); then
+        devices="${HIP_VISIBLE_DEVICES//,/ }"
+        read -ra local_devices <<< "$devices"
+        for local_rank in "${!local_devices[@]}"; do
+            path="${M31_TUNABLE_CSV%.csv}$local_rank.csv"
+            [[ -s $path && -r $path ]] || { echo "Missing TunableOp table: $path" >&2; exit 1; }
+        done
+    fi
+    export PYTORCH_TUNABLEOP_FILENAME="$M31_TUNABLE_CSV"
+    export PYTORCH_TUNABLEOP_ENABLED=1 PYTORCH_TUNABLEOP_TUNING=0
+    export PYTORCH_TUNABLEOP_HIPBLASLT_ENABLED=0 PYTORCH_TUNABLEOP_ROCBLAS_ENABLED=1
+fi
 export HIPBLASLT_TUNING_OVERRIDE_FILE=${M31_HIPBLASLT_CONFIG:-$runtime/config_file1110/hipblaslt.decode.accepted.config}
 case "$SGLANG_MINIMAX_FLASH_MLA_FP8_VERIFY_SPLITS" in
     0|1|2|4|8) ;;
     *) echo "SGLANG_MINIMAX_FLASH_MLA_FP8_VERIFY_SPLITS must be 0, 1, 2, 4 or 8." >&2; exit 2 ;;
 esac
+default_max_requests=160
+default_graph_max=10
+if [[ $variant == hisparse ]]; then
+    default_max_requests=256
+    default_graph_max=16
+fi
+graph_max=${M31_GRAPH_MAX_LOCAL_BS:-$default_graph_max}
+[[ $graph_max =~ ^([1-9]|1[0-6])$ ]] || { echo "Graph batch maximum must be 1 through 16." >&2; exit 2; }
+mapfile -t graph_bs < <(seq 1 "$graph_max")
 options=(
     --model-path "$model" --quantization slimquant_w4a8_marlin --trust-remote-code --random-seed 42
     --tp-size 16 --attn-dp-size 16 --ep-size 16 --moe-dense-tp-size 1 --enable-dp-lm-head
@@ -58,12 +95,12 @@ options=(
     --deepep-dispatcher-output-dtype int8 --disable-shared-experts-fusion
     --attention-backend triton --prefill-attention-backend triton --decode-attention-backend fa3
     --kv-cache-dtype fp8_e4m3 --page-size 128 --cuda-graph-backend-prefill disabled
-    --cuda-graph-backend-decode full --cuda-graph-bs-decode 1 2 4 5 6 8 9 10
+    --cuda-graph-backend-decode full --cuda-graph-bs-decode "${graph_bs[@]}"
     --speculative-algorithm DSPARK --speculative-draft-model-path "$draft"
     --speculative-draft-model-quantization compressed-tensors --speculative-draft-attention-backend triton
     --speculative-dspark-block-size 7 --speculative-num-draft-tokens 8
     --context-length "${M31_DECODE_CONTEXT_LENGTH:-163840}" --chunked-prefill-size 8192
-    --max-running-requests "${M31_MAX_RUNNING_REQUESTS:-160}" --mem-fraction-static "${M31_MEM_FRACTION:-0.95}"
+    --max-running-requests "${M31_MAX_RUNNING_REQUESTS:-$default_max_requests}" --mem-fraction-static "${M31_MEM_FRACTION:-0.95}"
     --enable-eplb --init-expert-location "$layout" --eplb-algorithm deepseek
     --eplb-rebalance-num-iterations 1000000 --expert-distribution-recorder-buffer-size 128
     --eplb-rebalance-layers-per-chunk 4 --reasoning-parser minimax-m3 --tool-call-parser minimax-m3
@@ -78,8 +115,39 @@ esac
 if [[ $variant == hisparse ]]; then
     export HCU_PLUGIN_MINIMAX_M31_HISPARSE=1 M31_HISPARSE_FAKE_VALIDATE=1
     export SGLANG_HICACHE_HOST_REGISTER_CHUNK_GB=${SGLANG_HICACHE_HOST_REGISTER_CHUNK_GB:-4}
-    hisparse_config=${M31_HISPARSE_CONFIG:-'{"device_buffer_size":65536,"host_to_device_ratio":1}'}
+    export M31_HISPARSE_REUSE_VERIFY_METADATA=${M31_HISPARSE_REUSE_VERIFY_METADATA:-1}
+    export M31_HISPARSE_FUSED_QK_CACHE=${M31_HISPARSE_FUSED_QK_CACHE:-1}
+    export M31_HISPARSE_FAST_PLAN=${M31_HISPARSE_FAST_PLAN:-1}
+    export M31_HISPARSE_PIN_SLOT_INDICES=${M31_HISPARSE_PIN_SLOT_INDICES:-1}
+    export M31_HISPARSE_DIRECT_VERIFY_INDICES=${M31_HISPARSE_DIRECT_VERIFY_INDICES:-1}
+    export M31_HISPARSE_BATCH_COMMIT=${M31_HISPARSE_BATCH_COMMIT:-0}
+    export SGLANG_HISPARSE_HCU_PIN_HOST_KV=${SGLANG_HISPARSE_HCU_PIN_HOST_KV:-0}
+    if [[ $M31_HISPARSE_REUSE_VERIFY_METADATA != 1 ]]; then
+        export M31_STAGE1_GRAPH_MAX_KV_LEN=''
+    fi
+    profile=${M31_HISPARSE_PROFILE:-headwise}
+    case "$profile" in
+        headwise)
+            default_hot_slots=32768
+            export M31_HISPARSE_HEADWISE_SWAP=1 M31_HISPARSE_AB_COMPACT_HOT=1
+            export M31_HISPARSE_STABLE_SLOTS=1 M31_HISPARSE_HIP_STABLE_PLAN=1
+            export M31_HISPARSE_VERIFY_QUERY_CHUNK=8
+            export M31_HISPARSE_TILED_SWAP=${M31_HISPARSE_TILED_SWAP:-256,8}
+            ;;
+        whole)
+            default_hot_slots=65536
+            export M31_HISPARSE_HEADWISE_SWAP=0 M31_HISPARSE_AB_COMPACT_HOT=0
+            export M31_HISPARSE_STABLE_SLOTS=${M31_HISPARSE_STABLE_SLOTS:-0}
+            export M31_HISPARSE_HIP_STABLE_PLAN=${M31_HISPARSE_HIP_STABLE_PLAN:-0}
+            export M31_HISPARSE_TILED_SWAP=${M31_HISPARSE_TILED_SWAP:-256,16}
+            ;;
+        *) echo "M31_HISPARSE_PROFILE must be headwise or whole." >&2; exit 2 ;;
+    esac
+    printf -v default_hisparse_config '{"device_buffer_size":%s,"host_to_device_ratio":1.9}' "$default_hot_slots"
+    hisparse_config=${M31_HISPARSE_CONFIG:-$default_hisparse_config}
     options+=(--enable-hisparse --hisparse-config "$hisparse_config" --disaggregation-decode-host-receive-threshold 1)
+    printf 'HiSparse profile=%s, tile=%s, stable_slots=%s, HIP plan=%s\n' \
+        "$profile" "$M31_HISPARSE_TILED_SWAP" "$M31_HISPARSE_STABLE_SLOTS" "$M31_HISPARSE_HIP_STABLE_PLAN" >&2
 fi
 command=("$py" -m sglang.launch_server "${options[@]}" "$@")
 if (( print_args )); then
