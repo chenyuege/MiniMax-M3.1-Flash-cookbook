@@ -16,4 +16,5 @@
 - [启动脚本](scripts/serve.sh)提供与文档相同的 96 GB 参数，可以输出完整启动命令。
 - [仓库 Skill](.agents/skills/minimax-m31-cookbook/SKILL.md)用于维护配方、复跑验证以及更新支持矩阵。
 - [DP16EP16 启动与性能](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md)包含 fixed8 基线和社区版插件的启动命令，记录关闭 HiSparse 到 BS144 与开启 HiSparse 到 BS256 的四节点 Fake Prefill Decode 实测。
+- [DP16EP16 性能测试脚本](scripts/bench-dp16ep16-fake.py)支持关闭和开启 HiSparse 的 Fake Prefill 并发扫描与 BS256 历史序列对照。[运行步骤](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md#复跑-fake-prefill-decode)
 - [CP8EP8 Prefill 启动脚本](scripts/serve-cp8ep8-prefill.sh)支持两节点静态 EPLB、packed FP8 AllGather 和请求广播压缩。
