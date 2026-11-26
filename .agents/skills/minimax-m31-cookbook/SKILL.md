@@ -1,6 +1,6 @@
 ---
 name: minimax-m31-cookbook
-description: 维护和复跑 MiniMax-M3.1-Flash W4A8/W8A8 在 BW1100 96 GB 和 BW1300 144 GB 上的 SGLang HCU Plugin 配方。用于更新模型文档、Mooncake 1P1D 配置、API 验证、性能测试或 GPU trace。
+description: 维护和复跑 MiniMax-M3.1-Flash W4A8/W8A8 在 BW1100 96 GB 上的 SGLang HCU Plugin 配方。用于更新模型文档、Mooncake 1P1D 配置、API 验证、性能测试或 GPU trace。
 ---
 
 # MiniMax-M3.1 Flash Cookbook
@@ -12,4 +12,3 @@ description: 维护和复跑 MiniMax-M3.1-Flash W4A8/W8A8 在 BW1100 96 GB 和 B
 5. trace 与性能分别验收。按 Cookbook 的口径验证缓存命中、采样步数、CPU/HIP/GPU 事件与 graph replay。性能只采用完整轮次。未能上实卡时，标明仅做过静态验证。
 
 6. CP8EP8 Prefill 使用[双节点配方](../../../docs/model-deployment/sglang/minimax-m3.1-flash-cp8ep8-prefill.md)和[启动脚本](../../../scripts/serve-cp8ep8-prefill.sh)。核对静态布局、8 个冗余槽、packed FP8 KV、TP rank 广播帧兼容和两端开关。先为 rank 0/1 各执行一次 `--print-args`，再验证短请求和 RSC 前缀命中。
-7. BW1300 144 GB 的 1P1D 使用 `M31_HARDWARE_PROFILE=bw1300-144gb`。分别核对 P/D 的 graph、显存、Mooncake 与 DSpark 契约。 [144 GB 配方](../../../docs/model-deployment/sglang/minimax-m3.1-flash-1p1d-bw1300.md)
