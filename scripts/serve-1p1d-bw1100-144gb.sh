@@ -4,7 +4,7 @@ set -euo pipefail
 role=${1:-}
 case "$role" in
   prefill|decode) shift ;;
-  *) echo "Usage: bash scripts/serve-1p1d-bw1300.sh {prefill|decode} [--print-args]" >&2; exit 2 ;;
+  *) echo "Usage: bash scripts/serve-1p1d-bw1100-144gb.sh {prefill|decode} [--print-args]" >&2; exit 2 ;;
 esac
 if (( $# > 1 )) || [[ -n ${1:-} && $1 != --print-args ]]; then
   echo "Pass only --print-args after the worker role." >&2

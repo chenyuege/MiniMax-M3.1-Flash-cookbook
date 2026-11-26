@@ -1,10 +1,10 @@
-# MiniMax-M3.1-Flash 1P1D on BW1300 144 GB
+# MiniMax-M3.1-Flash 1P1D on BW1100 144 GB
 
 ## 模型列表
 
 | 模型权重 | 量化方式 | SGLang 版本 | 推荐硬件 | 卡数 | 部署方式 | 启动命令 |
 | --- | --- | --- | --- | --- | --- | --- |
-| [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | 0.5.23 + HCU Plugin | BW1300 144 GB/卡 | 16（8P + 8D） | Mooncake 1P1D | [启动服务](#启动服务) |
+| [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | 0.5.23 + HCU Plugin | BW1100 144 GB/卡 | 16（8P + 8D） | Mooncake 1P1D | [启动服务](#启动服务) |
 
 ## 环境准备
 
@@ -34,7 +34,7 @@ docker run --rm --name "minimax-m31-$role" \
   -v "$CHECKPOINTS_DIR:/model:ro" -v "$PWD:/cookbook:ro" \
   -e M31_PORT=21110 -e M31_BOOTSTRAP_PORT=28998 \
   -e M31_PD_IB_DEVICES -e ROCSHMEM_ALLOWED_IBV_DEVICES \
-  --entrypoint bash "$M31_IMAGE" /cookbook/scripts/serve-1p1d-bw1300.sh "$role"
+  --entrypoint bash "$M31_IMAGE" /cookbook/scripts/serve-1p1d-bw1100-144gb.sh "$role"
 ```
 
 在 Router 所在节点将 `PREFILL_HOST` 与 `DECODE_HOST` 设为各 worker 的可达地址，使用已安装的 `sglang-router==0.3.2` 启动 Router。
@@ -48,7 +48,7 @@ python3 -m sglang_router.launch_router --pd-disaggregation \
 
 ## 验证部署
 
-在已设置 RDMA 变量的环境中，为两个角色分别执行 `bash scripts/serve-1p1d-bw1300.sh <role> --print-args`。启动后检查 P/D 各自的 `/server_info`，确认 `disaggregation_mode` 分别为 `prefill` 和 `decode`，传输后端均为 `mooncake`。
+在已设置 RDMA 变量的环境中，为两个角色分别执行 `bash scripts/serve-1p1d-bw1100-144gb.sh <role> --print-args`。启动后检查 P/D 各自的 `/server_info`，确认 `disaggregation_mode` 分别为 `prefill` 和 `decode`，传输后端均为 `mooncake`。
 
 通过 Router 发送首条请求，确认 HTTP 200 且返回 `PARIS`。
 
