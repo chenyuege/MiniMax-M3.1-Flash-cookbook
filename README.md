@@ -1,6 +1,6 @@
 # MiniMax-M3.1-Flash-cookbook
 
-在海光 HCU 上部署和验证 MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8。BW1100 的 96 GB 与 144 GB 档均有基于 SGLang 0.5.23、HCU Plugin 和 Mooncake 的双节点 1P1D 配方。BW1300 也支持四节点 DP16EP16 和双节点 CP8EP8 Prefill。
+在海光 HCU 上部署和验证 MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8。BW1100 的 96 GB 与 144 GB 档均有基于 SGLang 0.5.23、HCU Plugin 和 Mooncake 的双节点 1P1D 配方。BW1300 支持双节点 DP8EP8 Decode 和 CP8EP8 Prefill，以及四节点 DP16EP16。
 
 ## 支持矩阵
 
@@ -9,6 +9,7 @@
 | [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | 0.5.23 + HCU Plugin | BW1100 96 GB | 16（8P + 8D） | [1P1D](docs/model-deployment/sglang/minimax-m3.1-flash.md) |
 | [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | 0.5.23 + HCU Plugin | BW1100 144 GB/卡 | 16（8P + 8D） | [1P1D](docs/model-deployment/sglang/minimax-m3.1-flash-1p1d-bw1100-144gb.md) |
 | [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | HCU fixed8 基线 / 0.5.23 + HCU Plugin | BW1300 144 GB/卡 | 16（4 节点 × 4 卡） | [DP16EP16 + EPLB](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md) |
+| [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | 0.5.23 + HCU Plugin + adapter | BW1300 144 GB/卡 | 8（2 节点 × 4 卡） | [DP8EP8 Decode + EPLB](docs/model-deployment/sglang/minimax-m3.1-flash-dp8ep8-bw1300.md) |
 | [MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8](https://www.modelscope.cn/models/hygon/MiniMax-M3.1-Flash-Channel-W4A8-INT4-W8A8-INT8) | INT4 W4A8 + INT8 W8A8 | 0.5.23 + HCU Plugin + adapter | BW1300 144 GB/卡 | 8（2 节点 × 4 卡） | [CP8EP8 Prefill](docs/model-deployment/sglang/minimax-m3.1-flash-cp8ep8-prefill.md) |
 
 - [部署 Cookbook](docs/model-deployment/sglang/minimax-m3.1-flash.md)涵盖环境、P/D 与 Router 启动、API 验证、压测和 trace。
@@ -18,5 +19,6 @@
 - [BW1100 144 GB 1P1D 启动脚本](scripts/serve-1p1d-bw1100-144gb.sh)提供双节点 Mooncake 启动参数。[部署说明](docs/model-deployment/sglang/minimax-m3.1-flash-1p1d-bw1100-144gb.md)
 - [仓库 Skill](.agents/skills/minimax-m31-cookbook/SKILL.md)用于维护配方、复跑验证以及更新支持矩阵。
 - [DP16EP16 运行镜像](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md#加载-1126-运行镜像)记录 1126 版本、校验和及容器内启动方式。[BS128/144 Trace 与性能对照](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md#1126-插件版-fake-prefill-decode)记录 HiSparse 开关和按 head 优化结果。
-- [DP16EP16 性能测试脚本](scripts/bench-dp16ep16-fake.py)支持关闭和开启 HiSparse 的 Fake Prefill 并发扫描与 BS256 历史序列对照。[运行步骤](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md#复跑-fake-prefill-decode)
+- [DP8EP8 启动脚本](scripts/serve-dp8ep8.sh)支持普通推理、Fake Prefill Decode、HiSparse 和 EP8 布局采集。[双节点部署与 BS8–128 实测](docs/model-deployment/sglang/minimax-m3.1-flash-dp8ep8-bw1300.md)
+- [Fake Prefill 性能测试脚本](scripts/bench-dp16ep16-fake.py)默认使用 DP16，传入 `--dp-size 8` 可测 DP8。支持 HiSparse 开关与 DP16 BS256 历史序列对照。[DP16EP16 运行步骤](docs/model-deployment/sglang/minimax-m3.1-flash-dp16ep16.md#复跑-fake-prefill-decode)
 - [CP8EP8 Prefill 启动脚本](scripts/serve-cp8ep8-prefill.sh)支持两节点静态 EPLB、packed FP8 AllGather 和请求广播压缩。

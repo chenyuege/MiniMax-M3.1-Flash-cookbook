@@ -1,4 +1,4 @@
-"""MiniMax DP16 decode benchmark using SGLang's fake KV transfer."""
+"""MiniMax DP8/DP16 Decode benchmark using SGLang's fake KV transfer."""
 import argparse
 import ast
 import contextlib
@@ -19,7 +19,7 @@ import types
 import uuid
 from pathlib import Path
 
-DP_SIZE = 16
+CARDS_PER_NODE = 4
 INPUT_LEN = 147456
 OUTPUT_LEN = 1024
 SEED = 42
@@ -260,7 +260,7 @@ def run(args, batch, output_dir, data, digest, serving):
     base_url = f"http://{args.host}:{args.port}"
     input_len, output_len = data["input_len"], data["output_len"]
     run_id = uuid.uuid4().hex
-    active_ranks = min(DP_SIZE, batch)
+    active_ranks = min(args.dp_size, batch)
 
     with requests.Session() as session:
         session.trust_env = False
@@ -276,13 +276,15 @@ def run(args, batch, output_dir, data, digest, serving):
             "disaggregation_mode": "decode",
             "disaggregation_transfer_backend": "fake",
             "disable_radix_cache": True,
-            "nnodes": 4,
-            "attn_dp_size": DP_SIZE,
-            "ep_size": DP_SIZE,
-            "tp_size": DP_SIZE,
-            "enable_eplb": True,
+            "nnodes": args.dp_size // CARDS_PER_NODE,
+            "attn_dp_size": args.dp_size,
+            "ep_size": args.dp_size,
+            "tp_size": args.dp_size,
+            "enable_eplb": not args.calibration,
             "enable_hisparse": args.hisparse,
         }
+        if args.calibration:
+            expected["expert_distribution_recorder_mode"] = "stat"
         mismatches = {key: info.get(key) for key, value in expected.items() if info.get(key) != value}
         if mismatches:
             raise RuntimeError(f"Unexpected server settings: {mismatches}")
@@ -290,8 +292,8 @@ def run(args, batch, output_dir, data, digest, serving):
         before = fetch("v1/loads?include=core,memory,spec")
         loads = sorted(before["loads"], key=lambda row: row["dp_rank"])
         save(output_dir, "loads-before.json", before)
-        if [row["dp_rank"] for row in loads] != list(range(DP_SIZE)):
-            raise RuntimeError("Expected live KV capacity for all 16 DP ranks")
+        if [row["dp_rank"] for row in loads] != list(range(args.dp_size)):
+            raise RuntimeError(f"Expected live KV capacity for all {args.dp_size} DP ranks")
         if any(row["num_running_reqs"] or row["num_waiting_reqs"] for row in loads):
             raise RuntimeError("Wait until all DP ranks are idle before benchmarking")
 
@@ -429,6 +431,8 @@ def main():
     parser.add_argument("--tokenizer", default=os.environ.get("M31_TOKENIZER_PATH"))
     parser.add_argument("--prepare-from-sharegpt", type=Path, metavar="LOCAL_JSON")
     parser.add_argument("--bs", type=int, nargs="+")
+    parser.add_argument("--dp-size", type=int, choices=(8, 16), default=16,
+                        help="Decode topology on four-card nodes (default: 16)")
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=11011)
@@ -436,6 +440,8 @@ def main():
     parser.add_argument("--check-inputs", action="store_true")
     parser.add_argument("--require-reference-inputs", action="store_true")
     parser.add_argument("--hisparse", action="store_true")
+    parser.add_argument("--calibration", action="store_true",
+                        help="Run traffic for the expert-distribution recorder with EPLB disabled")
     parser.add_argument("--require-residency", action="store_true")
     parser.add_argument("--history", action="store_true",
                         help="Run BS16, fresh BS256, BS64/144/224, then two conditioned BS256 rounds")
@@ -455,7 +461,11 @@ def main():
         parser.error("Benchmarking requires --output and --model (or M31_MODEL_PATH)")
     if args.repeats < 1:
         parser.error("--repeats must be positive")
+    if args.calibration and args.hisparse:
+        parser.error("--calibration uses the Fake Prefill service with HiSparse disabled")
     if args.history:
+        if args.dp_size != 16:
+            parser.error("--history is the DP16EP16 benchmark sequence")
         if not args.hisparse or args.bs is not None or args.repeats != 1:
             parser.error("--history requires --hisparse and defines the batch sequence and repeats")
         if not math.isinf(args.request_rate):
@@ -463,8 +473,12 @@ def main():
         args.require_residency = True
         cases = HISTORY
     else:
-        sizes = args.bs or [64, 128, 144]
-        limit = 256 if args.hisparse else 144
+        if args.dp_size == 8:
+            sizes = args.bs or [8, 16, 32, 48, 64]
+            limit = 128 if args.hisparse else 64
+        else:
+            sizes = args.bs or [64, 128, 144]
+            limit = 256 if args.hisparse else 144
         if not all(1 <= value <= limit for value in sizes) or len(set(sizes)) != len(sizes):
             parser.error(f"--bs requires distinct integers in 1..{limit}")
         cases = [(f"bs{batch}-r{repeat}", batch)
