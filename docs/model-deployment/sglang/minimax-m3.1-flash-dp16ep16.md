@@ -14,6 +14,7 @@
 ## 环境准备
 
 - 四台独立计算节点，每台 4 张 BW1300 HCU，每张卡 144 GB 显存，共 16 卡。四台节点需要互通，并在容器内暴露 HCU、RDMA 设备和所需的驱动。
+- 1126 HiSparse 测试容器每节点内存限额为 728 GiB。启动前同时核对宿主机 `MemAvailable` 和容器 cgroup 余量，取两者较小值。本次压测驱动要求每节点至少有 640 GiB 可用，实测为约 688–692 GiB。该预算对应本页的 1.9 Host/Device ratio、4 卡/节点与长上下文负载。
 - 四节点的主模型、draft、EP16 EPLB 布局与调优配置须相同。将容器内的模型路径和配置路径设为实际挂载位置。每个节点根据可用网卡设置 `ROCSHMEM_ALLOWED_IBV_DEVICES`。
 - EPLB 使用 EP16 的 `expert_distribution_recorder_1794400407.277366.pt`，hipBLASLt 使用 `hipblaslt.decode.accepted.config`。两份资产从对应的运行镜像或已验证的评测资产中取得。
 - 使用宿主机间可达的 rank 0 地址。默认 rendezvous 端口为 5001，服务端口为 11011。
@@ -75,7 +76,7 @@ docker image inspect --format '{{.Id}}' \
 
 按[环境准备](#环境准备)启动容器并透传四张 HCU、RDMA 和模型挂载。容器内可以直接使用 `/opt/minimax31-w4a8-plugin/serve.sh`，它与 [DP16EP16 启动脚本](../../../scripts/serve-dp16ep16.sh)相同。使用镜像内的 EPLB 布局和调优表时，可省略 `M31_EPLB_INIT_LOCATION` 与 `M31_HIPBLASLT_CONFIG`。通过 `/opt/minimax31-w4a8-plugin/install-verified` 查看构建所用的源码版本。
 
-在每个计算节点设置 `CHECKPOINTS_DIR`、`MASTER_IP`、`NODE_RANK` 和该节点的 `ROCSHMEM_ALLOWED_IBV_DEVICES`，并设置前面确认过的容器内权重路径。以下命令启动用于 1126 复现的 Fake Prefill + headwise HiSparse。关闭组将 `hisparse` 改为 `fake`。
+在每个计算节点设置 `CHECKPOINTS_DIR`、`MASTER_IP`、`NODE_RANK` 和该节点的 `ROCSHMEM_ALLOWED_IBV_DEVICES`，并设置前面确认过的容器内权重路径。以下命令启动用于 1126 复现的 Fake Prefill + headwise HiSparse。关闭组将 `hisparse` 改为 `fake`。测 BS128/144 同配置 A/B 前，在宿主机 `export M31_MAX_RUNNING_REQUESTS=160 M31_GRAPH_MAX_LOCAL_BS=10`，开关两侧均使用同值。跑完整扫档时可取消这两个覆盖，按模式采用脚本默认值。
 
 ```bash
 M31_IMAGE=minimax31-w4a8:dp16ep16-eplb-plugin-sglang0523-hisparse-20261126
@@ -87,6 +88,7 @@ docker run -d --name "minimax-m31-dp16-$NODE_RANK" \
   -v "$CHECKPOINTS_DIR:/model:ro" \
   -e M31_MODEL_PATH -e M31_DSPARK_MODEL_PATH -e ROCSHMEM_ALLOWED_IBV_DEVICES \
   -e DIST_PORT -e SERVER_PORT -e M31_HISPARSE_PROFILE=headwise \
+  -e M31_MAX_RUNNING_REQUESTS -e M31_GRAPH_MAX_LOCAL_BS \
   -e SGLANG_SIMULATE_ACC_LEN=3.6 -e SGLANG_MINIMAX_EXTEND_ROUTER_GEMV=0 \
   --entrypoint /bin/bash "$M31_IMAGE" \
   /opt/minimax31-w4a8-plugin/serve.sh hisparse "$MASTER_IP" "$NODE_RANK"
@@ -100,7 +102,7 @@ docker run -d --name "minimax-m31-dp16-$NODE_RANK" \
 
 ```bash
 # 真实 KV 的 Decode/RSC
-bash scripts/serve-dp16ep16.sh rsc "$MASTER_IP" "$NODE_RANK" --print-args
+SGLANG_SIMULATE_ACC_LEN=0 bash scripts/serve-dp16ep16.sh rsc "$MASTER_IP" "$NODE_RANK" --print-args
 
 # Fake Prefill Decode，关闭 HiSparse
 bash scripts/serve-dp16ep16.sh fake "$MASTER_IP" "$NODE_RANK" --print-args
